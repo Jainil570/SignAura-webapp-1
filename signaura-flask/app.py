@@ -6,6 +6,8 @@ import numpy as np
 import tensorflow as tf
 import threading
 import time
+from flask_cors import CORS
+CORS(app)
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')

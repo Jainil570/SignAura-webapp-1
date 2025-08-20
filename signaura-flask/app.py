@@ -1,30 +1,30 @@
 from flask import Flask, render_template, Response
 from flask_socketio import SocketIO
+from flask_cors import CORS
 import cv2
 import mediapipe as mp
 import numpy as np
 import tensorflow as tf
-import threading
 import time
-from flask_cors import CORS
-CORS(app)
 
+# -------------------
+# Flask + CORS setup
+# -------------------
 app = Flask(__name__)
+CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+# -------------------
 # Load models
+# -------------------
 static_model = tf.keras.models.load_model("./GestureModels/static_gesture_model.h5")
 dynamic_model = tf.keras.models.load_model("./GestureModels/dynamic_gesture_model.h5")
 
-last_gesture = "--"
-last_update_time = 0
-gesture_display_duration = 2.5  # seconds
-
-
-# Gesture labels
+# Gesture settings
 static_gestures = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
 dynamic_gestures = ['bzk', 'close', 'drink', 'goodbye', 'hello', 'rotate', 'walk']
 desired_seq_length = 50
+gesture_display_duration = 2.5  # seconds
 
 # MediaPipe setup
 mp_hands = mp.solutions.hands
@@ -34,16 +34,19 @@ mp_draw = mp.solutions.drawing_utils
 # Global state
 cap = None
 streaming = False
-mode = "static"  # or "dynamic"
+mode = "static"
 sequence = []
 last_gesture = None
 last_confidence = 0
-
 last_update_time = time.time()
+
+# -------------------
+# Video generator
+# -------------------
 def gen_frames():
     global cap, streaming, mode, sequence, last_gesture, last_confidence, last_update_time
 
-    cap = cv2.VideoCapture(1)  # Use 0 for default camera
+    cap = cv2.VideoCapture(0)  # ✅ Use 0 for default camera
     streaming = True
 
     while streaming:
@@ -93,8 +96,7 @@ def gen_frames():
                 else:
                     socketio.emit('gesture', {'gesture': '--'})
 
-
-        # Display gesture overlay
+        # Overlay prediction
         if mode == "dynamic" and last_gesture is not None:
             cv2.putText(frame, f"Gesture: {last_gesture} ({last_confidence*100:.1f}%)",
                         (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -106,6 +108,9 @@ def gen_frames():
 
     cap.release()
 
+# -------------------
+# Routes
+# -------------------
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -114,6 +119,9 @@ def index():
 def video():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# -------------------
+# SocketIO Events
+# -------------------
 @socketio.on('stop_camera')
 def stop_camera():
     global streaming
@@ -128,5 +136,8 @@ def set_mode(data):
     last_confidence = 0
     print(f"[Mode] Switched to {mode} mode")
 
+# -------------------
+# Entry Point
+# -------------------
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
